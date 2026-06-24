@@ -20,14 +20,15 @@ const server = http.createServer((req, res) => {
                     <title>WhatsApp Bot QR</title>
                     <meta http-equiv="refresh" content="10">
                     <style>
-                        body { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#111; color:#fff; font-family:sans-serif; }
-                        img { width:300px; height:300px; background:#fff; padding:10px; border-radius:10px; }
-                        p { font-size:18px; margin-top:20px; }
+                        * { margin:0; padding:0; box-sizing:border-box; }
+                        body { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#111; color:#fff; font-family:sans-serif; overflow:hidden; }
+                        img { width:200px; height:200px; background:#fff; padding:8px; border-radius:10px; }
+                        p { font-size:14px; margin-top:12px; text-align:center; }
                     </style>
                 </head>
                 <body>
                     <p>Scan this with WhatsApp → Linked Devices</p>
-                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(latestQR)}" />
+                    <img src="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data=${encodeURIComponent(latestQR)}" />
                     <p style="font-size:12px;opacity:0.5">Page refreshes every 10 seconds</p>
                 </body>
                 </html>
