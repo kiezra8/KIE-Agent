@@ -11,8 +11,29 @@ const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 let latestQRImage = null;
 let botStatus = 'Starting up...';
 
+let currentSock = null;
+let reconnecting = false;
+
 // Web server — shows QR code and keeps Render alive
 const server = http.createServer(async (req, res) => {
+    if (req.url === '/reconnect') {
+        if (!reconnecting) {
+            reconnecting = true;
+            latestQRImage = null;
+            botStatus = 'Reconnecting...';
+            if (currentSock) {
+                try { currentSock.end(); } catch(e) {}
+            }
+            setTimeout(() => {
+                reconnecting = false;
+                startBot();
+            }, 2000);
+        }
+        res.writeHead(302, { Location: '/qr' });
+        res.end();
+        return;
+    }
+
     if (req.url === '/qr') {
         if (latestQRImage) {
             res.writeHead(200, { 'Content-Type': 'text/html' });
@@ -27,12 +48,14 @@ const server = http.createServer(async (req, res) => {
                         img { width:220px; height:220px; border-radius:10px; }
                         .title { font-size:15px; margin-bottom:16px; opacity:0.9; }
                         .sub { font-size:11px; margin-top:12px; opacity:0.4; }
+                        .btn { margin-top:16px; padding:10px 24px; background:#25D366; color:#fff; border:none; border-radius:8px; font-size:14px; cursor:pointer; text-decoration:none; }
                     </style>
                 </head>
                 <body>
                     <p class="title">Scan with WhatsApp → Linked Devices</p>
                     <img src="${latestQRImage}" />
                     <p class="sub">Page refreshes every 15 seconds</p>
+                    <a class="btn" href="/reconnect">Get New QR</a>
                 </body>
                 </html>
             `);
@@ -42,9 +65,16 @@ const server = http.createServer(async (req, res) => {
                 <html>
                 <head>
                     <meta http-equiv="refresh" content="5">
-                    <style>* { margin:0; padding:0; } body { display:flex; align-items:center; justify-content:center; height:100vh; background:#111; color:#fff; font-family:sans-serif; font-size:18px; }</style>
+                    <style>
+                        * { margin:0; padding:0; }
+                        body { display:flex; flex-direction:column; gap:20px; align-items:center; justify-content:center; height:100vh; background:#111; color:#fff; font-family:sans-serif; font-size:18px; }
+                        .btn { padding:10px 24px; background:#25D366; color:#fff; border:none; border-radius:8px; font-size:14px; cursor:pointer; text-decoration:none; }
+                    </style>
                 </head>
-                <body>${botStatus} — refreshing...</body>
+                <body>
+                    <span>${botStatus} — refreshing...</span>
+                    <a class="btn" href="/reconnect">Force Reconnect</a>
+                </body>
                 </html>
             `);
         }
@@ -53,6 +83,7 @@ const server = http.createServer(async (req, res) => {
         res.end(botStatus);
     }
 });
+
 
 server.listen(process.env.PORT || 3000, () => {
     console.log('Server running. Open your Render URL + /qr to scan');
@@ -66,6 +97,8 @@ async function startBot() {
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
     });
+
+    currentSock = sock;
 
     sock.ev.on('connection.update', async (update) => {
         const { connection, lastDisconnect, qr } = update;
