@@ -2,7 +2,7 @@ require('dotenv').config();
 const crypto = require('crypto');
 if (!global.crypto) global.crypto = crypto;
 
-const { default: makeWASocket, proto, initAuthCreds, BufferJSON, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, proto, initAuthCreds, BufferJSON, DisconnectReason, fetchLatestBaileysVersion, Browsers } = require('@whiskeysockets/baileys');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const QRCode = require('qrcode');
 const http = require('http');
@@ -149,11 +149,16 @@ server.listen(process.env.PORT || 3000, '0.0.0.0', () => {
 // ─── Bot ───────────────────────────────────────────────────────────────────────
 async function startBot() {
     const { state, saveCreds } = await useRedisAuthState();
+    const { version, isLatest } = await fetchLatestBaileysVersion();
+    console.log(`Using WhatsApp v${version.join('.')}, isLatest: ${isLatest}`);
 
     const sock = makeWASocket({
+        version,
         auth: state,
         logger: pino({ level: 'silent' }),
         printQRInTerminal: false,
+        browser: Browsers.macOS('Desktop'),
+        syncFullHistory: false
     });
 
     currentSock = sock;
