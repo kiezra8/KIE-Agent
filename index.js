@@ -139,7 +139,7 @@ const server = http.createServer(async (req, res) => {
     }
 });
 
-server.listen(process.env.PORT || 3000, () => {
+server.listen(process.env.PORT || 3000, '0.0.0.0', () => {
     console.log('Server running. Open your app URL + /qr to scan');
 });
 
@@ -169,12 +169,18 @@ async function startBot() {
         }
 
         if (connection === 'close') {
-            const shouldReconnect = lastDisconnect?.error?.output?.statusCode !== DisconnectReason.loggedOut;
-            console.log('Connection closed. Reconnecting:', shouldReconnect);
+            const statusCode = lastDisconnect?.error?.output?.statusCode;
+            const shouldReconnect = statusCode !== DisconnectReason.loggedOut;
+            console.error('Connection closed. Error:', lastDisconnect?.error);
+            console.log('Reconnecting:', shouldReconnect);
+            
             if (shouldReconnect) {
                 latestQRImage = null;
                 botStatus = 'Reconnecting...';
-                setTimeout(startBot, 3000);
+                // Wait 5 seconds before trying again to avoid spamming
+                setTimeout(startBot, 5000);
+            } else {
+                botStatus = 'Logged out. Restart required.';
             }
         }
 
