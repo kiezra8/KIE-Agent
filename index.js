@@ -209,17 +209,32 @@ async function startBot() {
 
     sock.ev.on('messages.upsert', async ({ messages }) => {
         const msg = messages[0];
-        if (!msg || !msg.message || msg.key.fromMe) return;
+        if (!msg || !msg.message) return;
+
+        // Log incoming message to debug
+        console.log(`\n💬 Received message from ${msg.key.remoteJid}:`);
+        console.log(`- Is from me? ${msg.key.fromMe}`);
+        
+        if (msg.key.fromMe) return;
 
         const isGroup = msg.key.remoteJid.endsWith('@g.us');
-        if (isGroup) return;
+        if (isGroup) {
+            console.log('- Ignored: It is a group message');
+            return;
+        }
 
         const text =
             msg.message.conversation ||
             msg.message.extendedTextMessage?.text ||
             '';
 
-        if (!text) return;
+        if (!text) {
+            console.log('- Ignored: Message has no text content (maybe an image/audio)');
+            return;
+        }
+
+        console.log(`- Message text: "${text}"`);
+        console.log('⏳ Sending to Gemini API...');
 
         try {
             const prompt = `You are a personal assistant for someone who is currently offline or busy.
@@ -229,10 +244,13 @@ Message: "${text}"`;
 
             const result = await model.generateContent(prompt);
             const response = result.response.text();
-
+            
+            console.log(`✅ Gemini replied: "${response}"`);
+            
             await sock.sendMessage(msg.key.remoteJid, { text: response });
+            console.log('📤 Message successfully sent back to user.');
         } catch (error) {
-            console.error('Gemini error:', error);
+            console.error('❌ Gemini or Sending error:', error);
         }
     });
 }
