@@ -1,4 +1,7 @@
 require('dotenv').config();
+const crypto = require('crypto');
+if (!global.crypto) global.crypto = crypto;
+
 const { default: makeWASocket, proto, initAuthCreds, BufferJSON, DisconnectReason } = require('@whiskeysockets/baileys');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const QRCode = require('qrcode');

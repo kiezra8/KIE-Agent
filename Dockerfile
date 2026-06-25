@@ -1,4 +1,4 @@
-FROM node:18-alpine
+FROM node:20-alpine
 
 # git is required by @whiskeysockets/baileys during npm install
 RUN apk add --no-cache git
