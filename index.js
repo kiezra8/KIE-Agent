@@ -147,8 +147,9 @@ const server = http.createServer(async (req, res) => {
     }
 });
 
-server.listen(process.env.PORT || 3000, '0.0.0.0', () => {
-    console.log('Server running. Open your app URL + /qr to scan');
+const port = process.env.PORT || 3000;
+server.listen(port, () => {
+    console.log(`Server running on port ${port}. Open your Railway URL + /qr to scan`);
 });
 
 // ─── Bot ───────────────────────────────────────────────────────────────────────
