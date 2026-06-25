@@ -1,20 +1,75 @@
 require('dotenv').config();
-const { default: makeWASocket, useMultiFileAuthState, DisconnectReason } = require('@whiskeysockets/baileys');
+const { default: makeWASocket, proto, initAuthCreds, BufferJSON, DisconnectReason } = require('@whiskeysockets/baileys');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const QRCode = require('qrcode');
 const http = require('http');
 const pino = require('pino');
+const { Redis } = require('@upstash/redis');
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
 
 let latestQRImage = null;
 let botStatus = 'Starting up...';
-
 let currentSock = null;
 let reconnecting = false;
 
-// Web server — shows QR code and keeps Render alive
+// ─── Upstash Redis Auth State ──────────────────────────────────────────────────
+const redis = new Redis({
+    url: process.env.UPSTASH_REDIS_REST_URL,
+    token: process.env.UPSTASH_REDIS_REST_TOKEN,
+});
+
+async function useRedisAuthState() {
+    const write = async (data, id) => {
+        const serialized = JSON.stringify(data, BufferJSON.replacer);
+        await redis.set(`baileys:${id}`, serialized);
+    };
+
+    const read = async (id) => {
+        const raw = await redis.get(`baileys:${id}`);
+        if (!raw) return null;
+        const str = typeof raw === 'string' ? raw : JSON.stringify(raw);
+        return JSON.parse(str, BufferJSON.reviver);
+    };
+
+    const creds = (await read('creds')) || initAuthCreds();
+
+    return {
+        state: {
+            creds,
+            keys: {
+                get: async (type, ids) => {
+                    const data = {};
+                    await Promise.all(
+                        ids.map(async (id) => {
+                            let value = await read(`${type}-${id}`);
+                            if (type === 'app-state-sync-key' && value) {
+                                value = proto.Message.AppStateSyncKeyData.fromObject(value);
+                            }
+                            data[id] = value;
+                        })
+                    );
+                    return data;
+                },
+                set: async (data) => {
+                    const tasks = [];
+                    for (const category in data) {
+                        for (const id in data[category]) {
+                            const value = data[category][id];
+                            const key = `${category}-${id}`;
+                            tasks.push(value ? write(value, key) : redis.del(`baileys:${key}`));
+                        }
+                    }
+                    await Promise.all(tasks);
+                },
+            },
+        },
+        saveCreds: () => write(creds, 'creds'),
+    };
+}
+
+// ─── Web Server ────────────────────────────────────────────────────────────────
 const server = http.createServer(async (req, res) => {
     if (req.url === '/reconnect') {
         if (!reconnecting) {
@@ -22,7 +77,7 @@ const server = http.createServer(async (req, res) => {
             latestQRImage = null;
             botStatus = 'Reconnecting...';
             if (currentSock) {
-                try { currentSock.end(); } catch(e) {}
+                try { currentSock.end(); } catch (e) {}
             }
             setTimeout(() => {
                 reconnecting = false;
@@ -44,7 +99,7 @@ const server = http.createServer(async (req, res) => {
                     <meta http-equiv="refresh" content="15">
                     <style>
                         * { margin:0; padding:0; box-sizing:border-box; }
-                        body { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#111; color:#fff; font-family:sans-serif; overflow:hidden; }
+                        body { display:flex; flex-direction:column; align-items:center; justify-content:center; height:100vh; background:#111; color:#fff; font-family:sans-serif; }
                         img { width:220px; height:220px; border-radius:10px; }
                         .title { font-size:15px; margin-bottom:16px; opacity:0.9; }
                         .sub { font-size:11px; margin-top:12px; opacity:0.4; }
@@ -84,13 +139,13 @@ const server = http.createServer(async (req, res) => {
     }
 });
 
-
 server.listen(process.env.PORT || 3000, () => {
-    console.log('Server running. Open your Render URL + /qr to scan');
+    console.log('Server running. Open your app URL + /qr to scan');
 });
 
+// ─── Bot ───────────────────────────────────────────────────────────────────────
 async function startBot() {
-    const { state, saveCreds } = await useMultiFileAuthState('auth_info');
+    const { state, saveCreds } = await useRedisAuthState();
 
     const sock = makeWASocket({
         auth: state,
@@ -125,7 +180,7 @@ async function startBot() {
 
         if (connection === 'open') {
             latestQRImage = null;
-            botStatus = 'Bot connected and running';
+            botStatus = 'Bot connected and running ✅';
             console.log('✅ Bot is online!');
         }
     });
@@ -162,4 +217,14 @@ Message: "${text}"`;
     });
 }
 
-startBot();
+// ─── Entry Point ───────────────────────────────────────────────────────────────
+async function main() {
+    if (!process.env.UPSTASH_REDIS_REST_URL || !process.env.UPSTASH_REDIS_REST_TOKEN) {
+        console.error('❌ UPSTASH_REDIS_REST_URL or UPSTASH_REDIS_REST_TOKEN is not set!');
+        process.exit(1);
+    }
+    console.log('✅ Redis configured. Starting bot...');
+    await startBot();
+}
+
+main().catch(console.error);
