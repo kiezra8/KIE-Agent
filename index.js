@@ -5,9 +5,14 @@ if (!global.crypto) global.crypto = crypto;
 const { default: makeWASocket, proto, initAuthCreds, BufferJSON, DisconnectReason, fetchLatestBaileysVersion, Browsers } = require('@whiskeysockets/baileys');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const QRCode = require('qrcode');
+const qrcodeTerminal = require('qrcode-terminal');
 const http = require('http');
 const pino = require('pino');
 const { Redis } = require('@upstash/redis');
+
+// Prevent silent crashes
+process.on('uncaughtException', err => console.error('Uncaught Exception:', err));
+process.on('unhandledRejection', err => console.error('Unhandled Rejection:', err));
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
 const model = genAI.getGenerativeModel({ model: 'gemini-1.5-flash' });
@@ -156,7 +161,6 @@ async function startBot() {
         version,
         auth: state,
         logger: pino({ level: 'silent' }),
-        printQRInTerminal: true,
         browser: Browsers.macOS('Desktop'),
         syncFullHistory: false
     });
@@ -167,10 +171,11 @@ async function startBot() {
         const { connection, lastDisconnect, qr } = update;
 
         if (qr) {
-            botStatus = 'QR ready. Open /qr in browser to scan.';
+            botStatus = 'QR ready. Open /qr in browser or scan terminal to connect.';
             try {
                 latestQRImage = await QRCode.toDataURL(qr);
-                console.log('QR generated. Open /qr to scan it.');
+                console.log('QR generated! Open your Railway URL + /qr to scan, or scan the one below:');
+                qrcodeTerminal.generate(qr, { small: true });
             } catch (e) {
                 console.error('QR error:', e);
             }
